@@ -1,0 +1,76 @@
+trigger:
+  branches:
+    include:
+      - 'master'
+      - 'develop'
+      - 'release/*'
+#  paths:
+#    include:
+#      - 'src/*'
+#      - 'test/*'
+
+variables:
+  vmImage: 'ubuntu-16.04'
+
+stages:
+  - stage: 'Build'
+    displayName: 'Build and the the web application'
+    jobs:
+      - job: 'Build_Job'
+        condition: always()
+        pool:
+          vmImage: 'ubuntu-16.04'
+          demands:
+            - npm
+        steps:
+        - template: templates/build.yml
+          parameters:
+            workingDirectory: 'src/Tailspin.SpaceGame.Web'
+
+  - stage: 'Deploy_Develop'
+    displayName: 'Deploy to develop env'
+    condition: and(succeeded('Build'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    variables:
+      - group: 'Dev'
+    jobs:
+      - template: templates/publish.yml
+        parameters:
+          environment: 'develop'
+          appName: '$(AppService)'
+          vmImage: '$(vmImage)'
+
+  - stage: 'Deploy_Test'
+    displayName: 'Deploy to test environment'
+    condition: and(succeeded('Build'), contains(variables['Build.SourceBranch'], 'refs/heads/release/'))
+    variables:
+    - group: 'Test'
+    jobs:
+    - template: templates/publish.yml
+      parameters:
+        environment: 'test'
+        appName: '$(AppService)'
+        vmImage: '$(vmImage)'
+
+  - stage: 'Deploy_Staging'
+    displayName: 'Deploy to staging environment'
+    condition: and(succeeded('Build'), succeeded('Deploy_Test'))
+    variables:
+    - group: 'Staging'
+    jobs:
+    - template: templates/publish.yml
+      parameters:
+        environment: 'staging'
+        appName: '$(AppService)'
+        vmImage: '$(vmImage)'
+
+  - stage: 'Deploy_Live'
+    displayName: 'Deploy to live environment'
+    condition: and(succeeded('Build'), succeeded('Deploy_Staging'))
+    variables:
+    - group: 'Live'
+    jobs:
+    - template: templates/publish.yml
+      parameters:
+        environment: 'live'
+        appName: '$(AppService)'
+        vmImage: '$(vmImage)'

@@ -1,0 +1,75 @@
+parameters:
+  - name: workingDirectory
+    type: string
+    default: ''
+
+  - name: wwwrootDir
+    type: string
+    default: 'wwwroot'
+
+  - name: buildConfiguration
+    type: string
+    default: 'Release'
+
+  - name: dotnetSdkVersion
+    type: string
+    default: '3.1.100'
+
+  - name: buildPlatform
+    type: string
+    default: 'Any CPU'
+
+steps:
+  - script: 'echo $(Build.DefinitionName), $(Build.BuildId) > buildinfo.txt'
+    displayName: 'Write build info'
+
+  - task: Npm@1
+    displayName: 'Run npm install'
+    inputs:
+      verbose: false
+      command: 'install'
+      workingDir: ${{ parameters.workingDirectory }}
+
+  - script: './${{ parameters.workingDirectory }}/node_modules/.bin/node-sass ${{ parameters.workingDirectory }}/${{ parameters.wwwrootDir }} --output ${{ parameters.workingDirectory }}/${{ parameters.wwwrootDir }}'
+    displayName: 'Compile Sass assets'
+
+  - task: gulp@1
+    displayName: 'Run gulp tasks'
+    inputs:
+      gulpFile: '${{ parameters.workingDirectory }}/gulpfile.js'
+      workingDirectory: ${{ parameters.workingDirectory }}
+
+  - task: UseDotNet@2
+    displayName: 'Use sdk version ${{ parameters.dotnetSdkVersion }}'
+    inputs:
+      version: ${{ parameters.dotnetSdkVersion }}
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore packages'
+    inputs:
+      command: 'restore'
+      projects: '**/*.csproj'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Unit Tests'
+    inputs:
+      command: 'test'
+      projects: 'test/**/*.csproj'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build project'
+    inputs:
+      command: 'build'
+      arguments: '--no-restore --configuration ${{ parameters.buildConfiguration }}'
+      projects: 'src/**/*.csproj'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Publish'
+    inputs:
+      command: 'publish'
+      projects: 'src/**/*.csproj'
+      arguments: '--no-build --configuration ${{ parameters.buildConfiguration }} --output $(Build.ArtifactStagingDirectory)/${{ parameters.buildConfiguration }}'
+      zipAfterPublish: true
+
+  - publish: '$(Build.ArtifactStagingDirectory)'
+    artifact: drop
